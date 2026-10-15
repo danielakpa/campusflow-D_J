@@ -1,6 +1,5 @@
 """Main entry point for the CampusFlow helpdesk application."""
 
-import json
 from pathlib import Path
 
 from campusflow.tickets import create_ticket
@@ -22,6 +21,49 @@ from campusflow.storage import load_tickets, save_tickets
 DATA_FILE = Path(__file__).parent / "data" / "tickets.json"
 
 
+def ask_text(prompt, allow_blank=False):
+    """Ask for text again until the user enters an acceptable value."""
+
+    while True:
+        value = input(prompt).strip()
+
+        if allow_blank or value:
+            return value
+
+        print("Error: This field cannot be empty. Please try again.")
+
+
+def ask_choice(prompt, options):
+    """Ask until the user enters one of the available choices."""
+
+    while True:
+        choice = input(prompt).strip()
+
+        if choice in options:
+            return choice
+
+        print(
+            f"Error: Invalid choice. "
+            f"Choose from {', '.join(options.keys())}."
+        )
+
+
+def ask_ticket_id(prompt):
+    """Ask for an existing ticket ID, allowing 0 to cancel."""
+
+    while True:
+        ticket_id = input(prompt).strip().upper()
+
+        if ticket_id == "0":
+            return None
+
+        try:
+            find_ticket(current_tickets, ticket_id)
+            return ticket_id
+        except ValueError:
+            print("Error: Ticket not found. Enter a valid ticket ID or 0 to cancel.")
+
+
 def display_ticket(ticket):
     """Display the important information about one ticket."""
 
@@ -39,9 +81,7 @@ def display_ticket(ticket):
 
 
 def create_new_ticket(tickets):
-    """Create a ticket after collecting and validating user input."""
-
-    title = input("\nEnter ticket title: ").strip()
+    """Create a ticket, retrying invalid input."""
 
     category_options = {
         "1": "Network",
@@ -50,62 +90,103 @@ def create_new_ticket(tickets):
         "4": "Other",
     }
 
-    print("\nChoose a category:")
-    print("1. Network")
-    print("2. Hardware")
-    print("3. Software")
-    print("4. Other")
-
-    category_choice = input("Enter your choice (1-4): ").strip()
-
-    if category_choice not in category_options:
-        print("Error: Invalid category.")
-        return
-
-    category = category_options[category_choice]
-
     urgency_options = {
         "1": "low",
         "2": "medium",
         "3": "high",
     }
 
-    print("\nChoose urgency:")
-    print("1. Low")
-    print("2. Medium")
-    print("3. High")
+    while True:
+        title = ask_text("\nEnter ticket title (or 0 to cancel): ")
 
-    urgency_choice = input("Enter your choice (1-3): ").strip()
+        if title == "0":
+            print("Ticket creation cancelled.")
+            return
 
-    if urgency_choice not in urgency_options:
-        print("Error: Invalid urgency.")
-        return
+        print("\nChoose a category:")
+        print("1. Network")
+        print("2. Hardware")
+        print("3. Software")
+        print("4. Other")
 
-    urgency = urgency_options[urgency_choice]
-
-    affected_users_input = input(
-        "\nEnter the number of affected users: "
-    ).strip()
-
-    try:
-        affected_users = int(affected_users_input)
-
-        ticket = create_ticket(
-            tickets,
-            title,
-            category,
-            urgency,
-            affected_users,
+        category_choice = ask_choice(
+            "Enter your choice (1-4): ",
+            category_options,
         )
 
-        save_tickets(tickets, DATA_FILE)
+        category = category_options[category_choice]
 
-        print(f"\nTicket {ticket['id']} created successfully!")
-        display_ticket(ticket)
+        # If the user selects Other, ask for a custom category.
+        if category == "Other":
+            while True:
+                custom_category = input(
+                    "Enter the specific category: "
+                ).strip()
 
-    except (ValueError, OSError) as error:
-        print(f"\nError creating ticket: {error}")
+                if custom_category:
+                    category = custom_category
+                    break
 
+                print("Error: Category cannot be empty. Please try again.")
+
+        print("\nChoose urgency:")
+        print("1. Low")
+        print("2. Medium")
+        print("3. High")
+
+        urgency_choice = ask_choice(
+            "Enter your choice (1-3): ",
+            urgency_options,
+        )
+
+        urgency = urgency_options[urgency_choice]
+
+        # Keep asking until affected_users is a positive integer.
+        while True:
+            affected_input = input(
+                "\nEnter the number of affected users (or 0 to cancel): "
+            ).strip()
+
+            if affected_input == "0":
+                print("Ticket creation cancelled.")
+                return
+
+            try:
+                affected_users = int(affected_input)
+
+                if affected_users <= 0:
+                    print("Error: The number must be greater than zero.")
+                    continue
+
+                break
+
+            except ValueError:
+                print("Error: Enter a whole number, such as 5.")
+
+        try:
+            ticket = create_ticket(
+                tickets,
+                title,
+                category,
+                urgency,
+                affected_users,
+            )
+
+            # Save before announcing success.
+            save_tickets(tickets, DATA_FILE)
+
+            print(f"\nTicket {ticket['id']} created successfully!")
+            display_ticket(ticket)
+            return
+
+        except ValueError as error:
+            print(f"\nError creating ticket: {error}")
+            print("Please enter the ticket information again.")
+
+        except OSError as error:
+            print(f"\nCould not save the ticket: {error}")
+            print("The application will continue running.")
+            return
 
 def list_tickets(tickets):
     """Display all tickets."""
@@ -129,82 +210,151 @@ def assign_ticket_to_staff(tickets):
 
     list_tickets(tickets)
 
-    ticket_id = input(
-        "\nEnter ticket ID to assign (or 0 to cancel): "
-    ).strip().upper()
+    while True:
+        ticket_id = input(
+            "\nEnter ticket ID to assign (or 0 to cancel): "
+        ).strip().upper()
 
-    if ticket_id == "0":
-        print("Assignment cancelled.")
-        return
+        if ticket_id == "0":
+            print("Assignment cancelled.")
+            return
 
-    staff_name = input("Enter the staff member's name: ").strip()
+        try:
+            find_ticket(tickets, ticket_id)
+            break
+        except ValueError:
+            print("Error: Ticket not found. Please try again.")
 
-    try:
-        ticket = assign_staff(tickets, ticket_id, staff_name)
-        save_tickets(tickets, DATA_FILE)
-
-        print(
-            f"\nTicket {ticket['id']} assigned to "
-            f"{ticket['assigned_to']}."
+    while True:
+        staff_name = ask_text(
+            "Enter the staff member's name (or 0 to cancel): "
         )
 
-    except (ValueError, OSError) as error:
-        print(f"\nError assigning staff: {error}")
+        if staff_name == "0":
+            print("Assignment cancelled.")
+            return
+
+        try:
+            ticket = assign_staff(tickets, ticket_id, staff_name)
+            save_tickets(tickets, DATA_FILE)
+
+            print(
+                f"\nTicket {ticket['id']} assigned to "
+                f"{ticket['assigned_to']}."
+            )
+            return
+
+        except ValueError as error:
+            print(f"Error assigning staff: {error}")
+
+            # Do not repeatedly ask for a name if the ticket itself
+            # cannot be assigned. Let the user choose another ticket.
+            if "resolved" in str(error).lower():
+                return
+
+        except OSError as error:
+            print(f"Could not save the assignment: {error}")
+            return
 
 
 def change_ticket_status(tickets):
-    """Allow a user to update a ticket's status."""
+    """Display all tickets, then update or reopen a selected ticket."""
 
     if not tickets:
         print("\nThere are no tickets to update.")
         return
 
-    list_tickets(tickets)
+    # Show every ticket before asking which one to update.
+    print("\n========== ALL TICKETS ==========")
 
-    ticket_id = input(
-        "\nEnter ticket ID to update (or 0 to cancel): "
-    ).strip().upper()
+    for ticket in tickets:
+        display_ticket(ticket)
 
-    if ticket_id == "0":
-        print("Status update cancelled.")
-        return
+    # Ask which ticket the user wants to update.
+    while True:
+        ticket_id = input(
+            "\nEnter the ticket ID to update (or 0 to cancel): "
+        ).strip().upper()
 
-    try:
-        ticket = find_ticket(tickets, ticket_id)
+        if ticket_id == "0":
+            print("Status update cancelled.")
+            return
 
-        print("\nAvailable status options:")
-        print("1. open")
-        print("2. in_progress")
-        print("3. resolved")
+        try:
+            ticket = find_ticket(tickets, ticket_id)
+            break
+        except ValueError as error:
+            print(f"Error: {error}")
+            print("Please enter a valid ticket ID.")
 
+    print(f"\nSelected ticket: {ticket['id']} - {ticket['title']}")
+    print(f"Current status: {ticket['status']}")
+
+    # Offer reopening as an explicit menu choice.
+    if ticket["status"] == "resolved":
+        status_options = {
+            "1": "open",
+        }
+
+        print("\nChoose an action:")
+        print("1. Reopen ticket")
+        print("0. Cancel")
+
+        choice = ask_choice(
+            "Enter your choice: ",
+            {"1": "reopen", "0": "cancel"},
+        )
+
+        if choice == "0":
+            print("Status update cancelled.")
+            return
+
+        new_status = status_options[choice]
+
+    else:
         status_options = {
             "1": "open",
             "2": "in_progress",
             "3": "resolved",
         }
 
-        choice = input("Choose a status (1-3): ").strip()
+        print("\nChoose the new status:")
+        print("1. Open")
+        print("2. In progress")
+        print("3. Resolved")
+        print("0. Cancel")
 
-        if choice not in status_options:
-            print("Invalid status choice.")
-            return
+        status_options["0"] = "cancel"
 
-        ticket = update_status(
-            tickets,
-            ticket_id,
-            status_options[choice],
+        choice = ask_choice(
+            "Enter your choice: ",
+            status_options,
         )
 
+        if choice == "0":
+            print("Status update cancelled.")
+            return
+
+        new_status = status_options[choice]
+
+    try:
+        update_status(tickets, ticket_id, new_status)
+
+        # Save the updated ticket.
         save_tickets(tickets, DATA_FILE)
 
         print(
-            f"\nTicket {ticket['id']} status changed to "
-            f"{ticket['status']}."
+            f"\nTicket {ticket_id} status updated to "
+            f"{new_status.replace('_', ' ')}."
         )
 
-    except (ValueError, OSError) as error:
-        print(f"\nError updating status: {error}")
+        display_ticket(ticket)
 
+    except ValueError as error:
+        print(f"\nError: {error}")
+
+    except OSError as error:
+        print(f"\nCould not save the updated ticket: {error}")
 
 def show_unresolved_queue(tickets):
     """Display open and in-progress tickets by priority."""
@@ -238,51 +388,112 @@ def show_open_work_queue(tickets):
 
 
 def search_and_filter_tickets(tickets):
-    """Search tickets using a title and optional filters."""
+    """Search tickets using numbered filter choices."""
 
     if not tickets:
         print("\nThere are no tickets to search.")
         return
 
-    print("\nSEARCH AND FILTER TICKETS")
-    print("Leave a filter blank to ignore it.")
+    category_options = {
+        "1": "Network",
+        "2": "Hardware",
+        "3": "Software",
+        "4": "Other",
+        "5": "",
+    }
 
-    title = input("Title contains: ").strip()
-    category = input(
-        "Category (Network/Hardware/Software/Other): "
-    ).strip()
-    status = input(
-        "Status (open/in_progress/resolved): "
-    ).strip()
-    priority = input(
-        "Priority (critical/high/medium/low): "
-    ).strip()
+    status_options = {
+        "1": "open",
+        "2": "in_progress",
+        "3": "resolved",
+        "4": "",
+    }
 
-    sort_choice = input(
-        "Sort by priority? (y/n): "
-    ).strip().lower()
+    priority_options = {
+        "1": "critical",
+        "2": "high",
+        "3": "medium",
+        "4": "low",
+        "5": "",
+    }
 
-    try:
-        results = search_tickets(
-            tickets,
-            title=title,
-            category=category,
-            status=status,
-            priority=priority,
-            sort_by_priority=(sort_choice == "y"),
-        )
+    while True:
+        print("\n========== SEARCH TICKETS ==========")
+        print("Enter 0 at the title prompt to cancel.")
 
-        if not results:
-            print("\nNo tickets matched your search.")
+        title = input("Title contains (or 0 to cancel): ").strip()
+
+        if title == "0":
+            print("Search cancelled.")
             return
 
-        print(f"\nFound {len(results)} matching ticket(s).")
+        print("\nChoose category:")
+        print("1. Network")
+        print("2. Hardware")
+        print("3. Software")
+        print("4. Other")
+        print("5. Any category")
 
-        for ticket in results:
-            display_ticket(ticket)
+        category_choice = ask_choice(
+            "Enter choice (1-5): ",
+            category_options,
+        )
+        category = category_options[category_choice]
 
-    except ValueError as error:
-        print(f"\nSearch error: {error}")
+        print("\nChoose status:")
+        print("1. Open")
+        print("2. In progress")
+        print("3. Resolved")
+        print("4. Any status")
+
+        status_choice = ask_choice(
+            "Enter choice (1-4): ",
+            status_options,
+        )
+        status = status_options[status_choice]
+
+        print("\nChoose priority:")
+        print("1. Critical")
+        print("2. High")
+        print("3. Medium")
+        print("4. Low")
+        print("5. Any priority")
+
+        priority_choice = ask_choice(
+            "Enter choice (1-5): ",
+            priority_options,
+        )
+        priority = priority_options[priority_choice]
+
+        sort_choice = ask_choice(
+            "\nSort results by priority? (y/n): ",
+            {"y": "yes", "n": "no"},
+        )
+
+        try:
+            results = search_tickets(
+                tickets,
+                title=title,
+                category=category,
+                status=status,
+                priority=priority,
+                sort_by_priority=(sort_choice == "y"),
+            )
+
+            if not results:
+                print("\nNo tickets matched your search.")
+                return
+
+            print(f"\nFound {len(results)} matching ticket(s).")
+
+            for ticket in results:
+                display_ticket(ticket)
+
+            return
+
+        except ValueError as error:
+            print(f"\nSearch error: {error}")
+            print("Please try your search again.")
 
 
 def show_reports(tickets):
@@ -294,23 +505,17 @@ def show_reports(tickets):
     print(f"Total tickets: {report['total']}")
     print(f"Unresolved tickets: {report['unresolved']}")
     print(f"Resolved tickets: {report['resolved']}")
-    print(
-        f"Resolution percentage: "
-        f"{report['resolution_percentage']}%"
-    )
+    print(f"Resolution percentage: {report['resolution_percentage']}%")
 
     print("\nTickets by status:")
-
     for status, count in report["by_status"].items():
         print(f"  {status}: {count}")
 
     print("\nTickets by priority:")
-
     for priority, count in report["by_priority"].items():
         print(f"  {priority}: {count}")
 
     print("\nTickets by category:")
-
     for category, count in report["by_category"].items():
         print(f"  {category}: {count}")
 
@@ -326,31 +531,50 @@ def add_ticket_note(tickets):
 
     list_tickets(tickets)
 
-    ticket_id = input(
-        "\nEnter ticket ID for the note (or 0 to cancel): "
-    ).strip().upper()
+    while True:
+        ticket_id = input(
+            "\nEnter ticket ID for the note (or 0 to cancel): "
+        ).strip().upper()
 
-    if ticket_id == "0":
-        print("Adding note cancelled.")
-        return
+        if ticket_id == "0":
+            print("Adding note cancelled.")
+            return
 
-    author = input("Enter your name: ").strip()
-    message = input("Enter your note (5-300 characters): ").strip()
+        try:
+            find_ticket(tickets, ticket_id)
+            break
+        except ValueError:
+            print("Error: Ticket not found. Please try again.")
 
-    try:
-        note = add_note(
-            tickets,
-            ticket_id,
-            author,
-            message,
-        )
+    while True:
+        author = input("Enter your name (or 0 to cancel): ").strip()
 
-        save_tickets(tickets, DATA_FILE)
+        if author == "0":
+            print("Adding note cancelled.")
+            return
 
-        print(f"\nNote {note['note_id']} added successfully.")
+        message = input(
+            "Enter your note (5-300 characters): "
+        ).strip()
 
-    except (ValueError, OSError) as error:
-        print(f"\nError adding note: {error}")
+        if message == "0":
+            print("Adding note cancelled.")
+            return
+
+        try:
+            note = add_note(tickets, ticket_id, author, message)
+            save_tickets(tickets, DATA_FILE)
+
+            print(f"\nNote {note['note_id']} added successfully.")
+            return
+
+        except ValueError as error:
+            print(f"Error adding note: {error}")
+            print("Please correct the information and try again.")
+
+        except OSError as error:
+            print(f"Could not save the note: {error}")
+            return
 
 
 def show_ticket_notes(tickets):
@@ -362,33 +586,36 @@ def show_ticket_notes(tickets):
 
     list_tickets(tickets)
 
-    ticket_id = input(
-        "\nEnter ticket ID to view notes (or 0 to cancel): "
-    ).strip().upper()
+    while True:
+        ticket_id = input(
+            "\nEnter ticket ID to view notes (or 0 to cancel): "
+        ).strip().upper()
 
-    if ticket_id == "0":
-        print("Viewing notes cancelled.")
-        return
-
-    try:
-        notes = get_notes(tickets, ticket_id)
-
-        if not notes:
-            print(f"\nTicket {ticket_id} has no notes.")
+        if ticket_id == "0":
+            print("Viewing notes cancelled.")
             return
 
-        print(f"\nNOTES FOR TICKET {ticket_id}")
+        try:
+            notes = get_notes(tickets, ticket_id)
 
-        for note in notes:
+            if not notes:
+                print(f"\nTicket {ticket_id} has no notes.")
+                return
+
+            print(f"\nNOTES FOR TICKET {ticket_id}")
+
+            for note in notes:
+                print("-" * 40)
+                print(f"Note ID: {note['note_id']}")
+                print(f"Author:  {note['author']}")
+                print(f"Message: {note['message']}")
+
             print("-" * 40)
-            print(f"Note ID: {note['note_id']}")
-            print(f"Author:  {note['author']}")
-            print(f"Message: {note['message']}")
+            return
 
-        print("-" * 40)
-
-    except ValueError as error:
-        print(f"\nError viewing notes: {error}")
+        except ValueError as error:
+            print(f"Error viewing notes: {error}")
+            print("Please enter a valid ticket ID or 0 to cancel.")
 
 
 def take_understanding_check():
@@ -425,29 +652,16 @@ def show_menu():
     print("================================")
 
 
-def load_tickets_for_application():
-    """Load saved tickets safely when the application starts."""
-
-    try:
-        return load_tickets(DATA_FILE)
-
-    except (ValueError, OSError) as error:
-        print(f"\nCould not load saved tickets: {error}")
-        print("Please check the saved ticket file before continuing.")
-        return None
-
-
 def main():
     """Load tickets and run the application menu."""
 
     try:
-        tickets = load_tickets_for_application()
+        tickets = load_tickets(DATA_FILE)
 
-    except OSError as error:
-        print(f"Could not access saved tickets: {error}")
-        return
-
-    if tickets is None:
+    except (ValueError, OSError) as error:
+        print(f"\nCould not load saved tickets: {error}")
+        print("The saved data was not loaded.")
+        print("Please fix the saved file before starting CampusFlow.")
         return
 
     print("Welcome to CampusFlow!")
@@ -455,51 +669,40 @@ def main():
     while True:
         show_menu()
 
-        choice = input("Choose an option (1-12): ").strip()
-
         try:
+            choice = input("Choose an option (1-12): ").strip()
+
             if choice == "1":
                 create_new_ticket(tickets)
-
             elif choice == "2":
                 list_tickets(tickets)
-
             elif choice == "3":
                 assign_ticket_to_staff(tickets)
-
             elif choice == "4":
                 change_ticket_status(tickets)
-
             elif choice == "5":
                 show_unresolved_queue(tickets)
-
             elif choice == "6":
                 show_open_work_queue(tickets)
-
             elif choice == "7":
                 search_and_filter_tickets(tickets)
-
             elif choice == "8":
                 show_reports(tickets)
-
             elif choice == "9":
                 add_ticket_note(tickets)
-
             elif choice == "10":
                 show_ticket_notes(tickets)
-
             elif choice == "11":
                 take_understanding_check()
-
             elif choice == "12":
                 print("Thank you for using CampusFlow!")
                 break
-
             else:
-                print("Invalid choice. Enter a number from 1 to 12.")
+                print("Error: Enter a number from 1 to 12.")
 
         except (ValueError, OSError) as error:
             print(f"\nError: {error}")
+            print("Please try again.")
 
 
 if __name__ == "__main__":

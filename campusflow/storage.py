@@ -5,6 +5,7 @@ from pathlib import Path
 
 from campusflow.tickets import calculate_priority
 from campusflow.validation import (
+    VALID_CATEGORIES,
     VALID_PRIORITIES,
     VALID_STATUSES,
     VALID_URGENCIES,

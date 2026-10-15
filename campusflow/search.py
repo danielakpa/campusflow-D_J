@@ -1,5 +1,11 @@
 """Search tickets using a title and optional filters."""
 
+from campusflow.validation import (
+    VALID_PRIORITIES,
+    VALID_STATUSES,
+    normalize_category,
+)
+
 
 def search_tickets(
     tickets,
@@ -11,42 +17,49 @@ def search_tickets(
 ):
     """Return tickets matching every supplied search filter."""
 
-    # Define the valid filter options.
-    valid_categories = {"Network", "Hardware", "Software", "Other"}
-    valid_statuses = {"open", "in_progress", "resolved"}
-    valid_priorities = {"critical", "high", "medium", "low"}
-
-    # Convert optional filters to clean text.
-    title = title.strip().casefold() if isinstance(title, str) else title
-    category = category.strip() if isinstance(category, str) else category
-    status = status.strip().lower() if isinstance(status, str) else status
-    priority = priority.strip().lower() if isinstance(priority, str) else priority
-
-    # Reject invalid filters rather than silently ignoring them.
+    # Validate the title search.
     if not isinstance(title, str):
         raise ValueError("Title search must be text.")
 
-    if category and category.casefold() not in {
-        item.casefold() for item in valid_categories
-    }:
-        raise ValueError("Invalid category filter.")
+    title = title.strip().casefold()
 
-    if status and status not in valid_statuses:
-        raise ValueError("Invalid status filter.")
+    # All filters must be text.
+    if not all(
+        isinstance(value, str)
+        for value in (category, status, priority)
+    ):
+        raise ValueError("Search filters must be text.")
 
-    if priority and priority not in valid_priorities:
-        raise ValueError("Invalid priority filter.")
+    category = category.strip()
+    status = status.strip().lower()
+    priority = priority.strip().lower()
 
-    # Find tickets that match ALL supplied filters.
+    # Normalize standard categories and accept custom categories.
+    if category:
+        category = normalize_category(category).casefold()
+
+    # Validate status and priority.
+    if status and status not in VALID_STATUSES:
+        raise ValueError(
+            "Status must be open, in_progress, or resolved."
+        )
+
+    if priority and priority not in VALID_PRIORITIES:
+        raise ValueError(
+            "Priority must be critical, high, medium, or low."
+        )
+
     results = []
 
+    # Every supplied filter must match.
     for ticket in tickets:
-        # A blank title means no title filtering.
         if title and title not in ticket["title"].casefold():
             continue
 
-        # Category matching ignores capitalization.
-        if category and ticket["category"].casefold() != category.casefold():
+        if (
+            category
+            and ticket["category"].strip().casefold() != category
+        ):
             continue
 
         if status and ticket["status"] != status:
@@ -57,7 +70,7 @@ def search_tickets(
 
         results.append(ticket)
 
-    # Optional sorting: priority first, then numeric ticket ID.
+    # Optional sorting: highest priority first, then lowest ticket ID.
     if sort_by_priority:
         priority_order = {
             "critical": 0,

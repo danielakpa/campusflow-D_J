@@ -1,0 +1,46 @@
+[
+    {
+        "id": "T001",
+        "title": "1",
+        "category": "Network",
+        "urgency": "high",
+        "affected_users": 34,
+        "priority": "critical",
+        "status": "open",
+        "assigned_to": null,
+        "notes": []
+    },
+    {
+        "id": "T002",
+        "title": "sfg",
+        "category": "Hardware",
+        "urgency": "medium",
+        "affected_users": 32,
+        "priority": "high",
+        "status": "open",
+        "assigned_to": null,
+        "notes": []
+    },
+    {
+        "id": "T003",
+        "title": "good",
+        "category": "Hardware",
+        "urgency": "high",
+        "affected_users": 32,
+        "priority": "critical",
+        "status": "open",
+        "assigned_to": null,
+        "notes": []
+    },
+    {
+        "id": "T004",
+        "title": "bad",
+        "category": "Other",
+        "urgency": "low",
+        "affected_users": 3,
+        "priority": "medium",
+        "status": "open",
+        "assigned_to": "ada",
+        "notes": []
+    }
+]

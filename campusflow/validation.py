@@ -19,20 +19,23 @@ def validate_title(title):
 
 
 def normalize_category(category):
-    """Validate a category and standardize its capitalization."""
+    """Accept standard categories or a non-empty custom category."""
+
     if not isinstance(category, str):
         raise ValueError("Category must be text.")
 
-    cleaned = category.strip().casefold()
+    cleaned = category.strip()
 
+    if not cleaned:
+        raise ValueError("Category cannot be empty.")
+
+    # Standard categories keep their official capitalization.
     for valid_category in VALID_CATEGORIES:
-        if cleaned == valid_category.casefold():
+        if cleaned.casefold() == valid_category.casefold():
             return valid_category
 
-    raise ValueError(
-        "Category must be Network, Hardware, Software, or Other."
-    )
-
+    # Accept custom categories such as Electricity or Maintenance.
+    return cleaned
 
 def normalize_urgency(urgency):
     """Validate urgency and return it in lowercase."""
